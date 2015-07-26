@@ -5,14 +5,21 @@
 #Author: 归根落叶
 #Blog: http://this.ispenn.com
 
-import httplib2  
-from bs4 import BeautifulSoup
-import re
 import os,sys
+try:
+    import httplib2  
+except ImportError as e:
+    os.system('pip install -U httplib2')
+    import httplib2
+try:
+    from bs4 import BeautifulSoup
+except ImportError as e:
+    os.system('pip install -U beautifulsoup4')
+    from bs4 import BeautifulSoup
+from urllib.parse import urlencode  
+import re
 import logging
 
-reload(sys)  
-sys.setdefaultencoding('utf8')   
 log_file = os.path.join(os.getcwd(),'result/checkLinks.csv')
 log_format = '[%(asctime)s] [%(levelname)s] %(message)s'
 logging.basicConfig(format=log_format,filename=log_file,filemode='w',level=logging.DEBUG)
@@ -40,23 +47,25 @@ def getURL(url,session=None):
     http = httplib2.Http('.cache')
     response, content = http.request(url, 'GET', headers=headers)
     if response.status == 200:
-        soup = BeautifulSoup(str(content),from_encoding='utf-8')
+        soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
         #获取所有页面链接
         for links in soup.find_all('a'):
             if links is not None:
                 link = links.get('href')
                 if link is not None and link != '/' and not link.find('?t_=') > 0:
+                    if re.search(r'^(\\\'|\\")',link):
+                        link = link[2:-2]
                     if re.search(r'/$',link):
                         link = link[:-1]
-                    if re.search(r'^(http|https)://',link):
+                    if re.search(r'^(http|https)',link):
                         urlLinks.append(link)
-                    elif re.search(r'^//',link):
+                    elif re.search(r'^(//)',link):
                         link = urlParse[0] + link
                         urlLinks.append(link)
                     elif re.search(r'^/',link):
                         link = rootURL + link
                         urlLinks.append(link)
-                    elif re.search(r'^[^(javascript|#|\\|\'|")]',link):
+                    elif re.search(r'^[^(javascript|mailto|\\|#)]',link):
                         link = url + '/' + link
                         urlLinks.append(link)
         #获取所有图片链接
@@ -64,11 +73,13 @@ def getURL(url,session=None):
             if links is not None:
                 link = links.get('src')
                 if link is not None and link != '/':
+                    if re.search(r'^(\\\'|\\")',link):
+                        link = link[2:-2]
                     if re.search(r'/$',link):
                         link = link[:-1]
-                    if re.search(r'^(http|https)://',link):
+                    if re.search(r'^(http|https)',link):
                         imgLinks.append(link)
-                    elif re.search(r'^//',link):
+                    elif re.search(r'^(//)',link):
                         link = urlParse[0] + link
                         imgLinks.append(link)
                     elif re.search(r'^/',link):
@@ -82,11 +93,13 @@ def getURL(url,session=None):
             if links is not None:
                 link = links.get('src')
                 if link is not None and link != '/':
+                    if re.search(r'^(\\\'|\\")',link):
+                        link = link[2:-2]
                     if re.search(r'/$',link):
                         link = link[:-1]
-                    if re.search(r'^(http|https)://',link):
+                    if re.search(r'^(http|https)',link):
                         jsLinks.append(link)
-                    elif re.search(r'^//',link):
+                    elif re.search(r'^(//)',link):
                         link = urlParse[0] + link
                         jsLinks.append(link)
                     elif re.search(r'^/',link):
@@ -100,11 +113,13 @@ def getURL(url,session=None):
             if links is not None:
                 link = links.get('href')
                 if link is not None and link != '/':
+                    if re.search(r'^(\\\'|\\")',link):
+                        link = link[2:-2]
                     if re.search(r'/$',link):
                         link = link[:-1]
-                    if re.search(r'^(http|https)://',link):
+                    if re.search(r'^(http|https)',link):
                         cssLinks.append(link)
-                    elif re.search(r'^//',link):
+                    elif re.search(r'^(//)',link):
                         link = urlParse[0] + link
                         cssLinks.append(link)
                     elif re.search(r'^/',link):
@@ -142,17 +157,11 @@ def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
 
 #获取登录Session
 def getSession(url, postData):
-    if sys.version_info[0] == 3:
-        from urllib.parse import urlencode  
-        postData = urlencode(postData)
-    else:
-        import urllib
-        postData = urllib.urlencode(postData)
     headers = {'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
                'X-Requested-With':'XMLHttpRequest',
                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http('.cache')
-    response, content = http.request(url, 'POST', postData, headers=headers)
+    response, content = http.request(url, 'POST', urlencode(postData), headers=headers)
     if response.status == 200:
         match = re.search(r'true,"message":"(\w*)"',str(content))
         if match is not None:
@@ -206,7 +215,7 @@ def main():
                         checkList,checkedList,checkNextN = classifyLinks(urlList,baseURL,checkList,checkedList,checkNextN)
                 checkNext = checkNextN
             else:
-                logging.info('链接检查完毕')
+                logging.info('链接检查完毕，共检查 ' + str(len(checkedList)) + ' 个链接，其中有 ' + str(len(errorLinks)) + ' 个异常链接')
                 break
         for link in errorLinks:
             print(link)
