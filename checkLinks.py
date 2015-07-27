@@ -39,12 +39,14 @@ def getURL(url,session=None):
     rootURL = urlParse[0] + '//' + urlParse[2]
     if session is None:
         headers = {'contentType':'text/html;charset=UTF-8',
+        		   'Cache-Control':'no-cache',
                    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     else:
         headers = {'contentType':'text/html;charset=UTF-8',
+        		   'Cache-Control':'no-cache',
                    'Cookie':'session=' + session,
                    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
-    http = httplib2.Http('.cache')
+    http = httplib2.Http()
     response, content = http.request(url, 'GET', headers=headers)
     if response.status == 200:
         soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
@@ -65,7 +67,7 @@ def getURL(url,session=None):
                     elif re.search(r'^/',link):
                         link = rootURL + link
                         urlLinks.append(link)
-                    elif re.search(r'^[^(javascript|mailto|\\|#)]',link):
+                    elif re.search(r'^[^(javascript|mailto|#)]',link):
                         link = url + '/' + link
                         urlLinks.append(link)
         #获取所有图片链接
@@ -134,8 +136,9 @@ def getURL(url,session=None):
 #检查链接
 def checkLink(url):
     headers = {'contentType':'text/html;charset=UTF-8',
+        	   'Cache-Control':'no-cache',
                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
-    http = httplib2.Http('.cache')
+    http = httplib2.Http()
     response, content = http.request(url, 'GET', headers=headers)
     if response.status == 200:
         logging.info(str(response.status) + ', ' + url)
@@ -148,7 +151,7 @@ def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
     for i in range(len(urlList)):
         if len(urlList[i]) > 0:
             for link in urlList[i]:
-                if link.find(baseURL) > 0 and link not in checkList and link not in checkedList:
+                if link.split('/')[2].find(baseURL) > 0 and link not in checkList and link not in checkedList:
                     checkList.append(link)
                     if i == 0:
                         checkNext.append(link)
@@ -159,8 +162,9 @@ def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
 def getSession(url, postData):
     headers = {'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
                'X-Requested-With':'XMLHttpRequest',
+        	   'Cache-Control':'no-cache',
                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
-    http = httplib2.Http('.cache')
+    http = httplib2.Http()
     response, content = http.request(url, 'POST', urlencode(postData), headers=headers)
     if response.status == 200:
         match = re.search(r'true,"message":"(\w*)"',str(content))
