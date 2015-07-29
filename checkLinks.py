@@ -19,7 +19,9 @@ except ImportError as e:
 from urllib.parse import urlencode  
 import re
 import logging
-
+import smtplib  
+from email.mime.text import MIMEText  
+ 
 log_file = os.path.join(os.getcwd(),'result/checkLinks.csv')
 log_format = '[%(asctime)s] [%(levelname)s] %(message)s'
 logging.basicConfig(format=log_format,filename=log_file,filemode='w',level=logging.DEBUG)
@@ -32,18 +34,17 @@ logging.getLogger('').addHandler(console)
 #获取页面链接列表
 def getURL(url,session=None):
     urlLinks = []
-    imgLinks = []
-    jsLinks = []
-    cssLinks = []
+    resLinks = []
+    linkTypes = {'a':'href','iframe':'src','img':'src','script':'src','link':'href'}
     urlParse = url.split('/')
     rootURL = urlParse[0] + '//' + urlParse[2]
     if session is None:
         headers = {'contentType':'text/html;charset=UTF-8',
-        		   'Cache-Control':'no-cache',
+                   'Cache-Control':'no-cache',
                    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     else:
         headers = {'contentType':'text/html;charset=UTF-8',
-        		   'Cache-Control':'no-cache',
+                   'Cache-Control':'no-cache',
                    'Cookie':'session=' + session,
                    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http()
@@ -51,118 +52,77 @@ def getURL(url,session=None):
     if response.status == 200:
         soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
         #获取所有页面链接
-        for links in soup.find_all('a'):
-            if links is not None:
-                link = links.get('href')
-                if link is not None and link != '/' and not link.find('?t_=') > 0:
-                    if re.search(r'^(\\\'|\\")',link):
-                        link = link[2:-2]
-                    if re.search(r'/$',link):
-                        link = link[:-1]
-                    if re.search(r'^(http|https)',link):
-                        urlLinks.append(link)
-                    elif re.search(r'^(//)',link):
-                        link = urlParse[0] + link
-                        urlLinks.append(link)
-                    elif re.search(r'^/',link):
-                        link = rootURL + link
-                        urlLinks.append(link)
-                    elif re.search(r'^[^(javascript|mailto|#)]',link):
-                        link = url + '/' + link
-                        urlLinks.append(link)
-        #获取所有图片链接
-        for links in soup.find_all('img'):
-            if links is not None:
-                link = links.get('src')
-                if link is not None and link != '/':
-                    if re.search(r'^(\\\'|\\")',link):
-                        link = link[2:-2]
-                    if re.search(r'/$',link):
-                        link = link[:-1]
-                    if re.search(r'^(http|https)',link):
-                        imgLinks.append(link)
-                    elif re.search(r'^(//)',link):
-                        link = urlParse[0] + link
-                        imgLinks.append(link)
-                    elif re.search(r'^/',link):
-                        link = rootURL + link
-                        imgLinks.append(link)
-                    else:
-                        link = url + '/' + link
-                        imgLinks.append(link) 
-        #获取所有js链接
-        for links in soup.find_all('script'):
-            if links is not None:
-                link = links.get('src')
-                if link is not None and link != '/':
-                    if re.search(r'^(\\\'|\\")',link):
-                        link = link[2:-2]
-                    if re.search(r'/$',link):
-                        link = link[:-1]
-                    if re.search(r'^(http|https)',link):
-                        jsLinks.append(link)
-                    elif re.search(r'^(//)',link):
-                        link = urlParse[0] + link
-                        jsLinks.append(link)
-                    elif re.search(r'^/',link):
-                        link = rootURL + link
-                        jsLinks.append(link)
-                    else:
-                        link = url + '/' + link
-                        jsLinks.append(link) 
-        #获取所有css链接
-        for links in soup.find_all('link'):
-            if links is not None:
-                link = links.get('href')
-                if link is not None and link != '/':
-                    if re.search(r'^(\\\'|\\")',link):
-                        link = link[2:-2]
-                    if re.search(r'/$',link):
-                        link = link[:-1]
-                    if re.search(r'^(http|https)',link):
-                        cssLinks.append(link)
-                    elif re.search(r'^(//)',link):
-                        link = urlParse[0] + link
-                        cssLinks.append(link)
-                    elif re.search(r'^/',link):
-                        link = rootURL + link
-                        cssLinks.append(link)
-                    else:
-                        link = url + '/' + link
-                        cssLinks.append(link) 
-        return response.status,(urlLinks,imgLinks,jsLinks,cssLinks)
+        for linkType in linkTypes:
+            for links in soup.find_all(linkType):
+                if links is not None:
+                    link = links.get(linkTypes[linkType])
+                    if link is not None and link != '' and link != '/' and not link.find('?t_=') > 0:
+                        if re.search(r'^(\\\'|\\")',link):
+                            link = link[2:-2]
+                        if re.search(r'/$',link):
+                            link = link[:-1]
+                        if re.search(r'^(http|https)',link):
+                            if linkType in ['a','iframe']:
+                                urlLinks.append((link,url))
+                            else:
+                                resLinks.append((link,url))
+                        elif re.search(r'^(//)',link):
+                            link = urlParse[0] + link
+                            if linkType in ['a','iframe']:
+                                urlLinks.append((link,url))
+                            else:
+                                resLinks.append((link,url))
+                        elif re.search(r'^/',link):
+                            link = rootURL + link
+                            if linkType in ['a','iframe']:
+                                urlLinks.append((link,url))
+                            else:
+                                resLinks.append((link,url))
+                        elif re.search(r'^(../)',link):
+                            link = rootURL  + '/' + link
+                            if linkType in ['a','iframe']:
+                                urlLinks.append((link,url))
+                            else:
+                                resLinks.append((link,url))
+                        elif re.search(r'^[^(javascript|mailto|#)]',link):
+                            link = url + '/' + link
+                            if linkType in ['a','iframe']:
+                                urlLinks.append((link,url))
+                            else:
+                                resLinks.append((link,url))
+                        print(link)
+        return response.status,{'urlLinks':urlLinks,'resLinks':resLinks}
     return response.status,url
 
 #检查链接
 def checkLink(url):
     headers = {'contentType':'text/html;charset=UTF-8',
-        	   'Cache-Control':'no-cache',
+               'Cache-Control':'no-cache',
                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http()
-    response, content = http.request(url, 'GET', headers=headers)
+    response, content = http.request(url[0], 'GET', headers=headers)
     if response.status == 200:
-        logging.info(str(response.status) + ', ' + url)
+        logging.info(str(response.status) + ', ' + url[0] + ', ' + url[1])
     else:
-        logging.error(str(response.status) + ', ' + url)
+        logging.error(str(response.status) + ', ' + url[0] + ', ' + url[1])
     return response.status,url
 
 #链接分类 过滤掉站外链接
 def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
-    for i in range(len(urlList)):
-        if len(urlList[i]) > 0:
-            for link in urlList[i]:
-                if link.split('/')[2].find(baseURL) > 0 and link not in checkList and link not in checkedList:
+    for linkType in urlList:
+        if len(urlList[linkType]) > 0:
+            for link in urlList[linkType]:
+                if link[0].split('/')[2].find(baseURL) > 0 and link not in checkList and link[0] not in checkedList:
                     checkList.append(link)
-                    if i == 0:
+                    if linkType == 'urlLinks':
                         checkNext.append(link)
-                    print(link)
     return checkList,checkedList,checkNext
 
 #获取登录Session
 def getSession(url, postData):
     headers = {'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
                'X-Requested-With':'XMLHttpRequest',
-        	   'Cache-Control':'no-cache',
+               'Cache-Control':'no-cache',
                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http()
     response, content = http.request(url, 'POST', urlencode(postData), headers=headers)
@@ -175,6 +135,25 @@ def getSession(url, postData):
             return 0,str(content)
     else:
         return response.status,str(content)
+
+#发送通知邮件
+def sendMail(text):
+    sender = 'no-reply@example.com'  
+    receiver = ['penn@example.com']
+    subject = '[AutomantionTest]站点链接有效性扫描结果通知'  
+    smtpserver = 'smtp.exmail.qq.com'  
+    username = 'no-reply@example.com'  
+    password = 'password'  
+    
+    msg = MIMEText(text,'html','utf-8')      
+    msg['Subject'] = subject  
+    msg['From'] = sender
+    msg['To'] = ';'.join(receiver)
+    smtp = smtplib.SMTP()  
+    smtp.connect(smtpserver)  
+    smtp.login(username, password)  
+    smtp.sendmail(sender, receiver, msg.as_string())  
+    smtp.quit()  
 
 def main():
     homePage = 'http://www.example.com' #首页链接
@@ -189,7 +168,7 @@ def main():
     session = None
     if ifLogin:
         url = homePage + '/admin/user/login'
-        postData = {'username':'username@yunlai.cn',
+        postData = {'username':'username@example.com',
                     'password':'password',
                     'remeber':'0'}
         status,session = getSession(url,postData)
@@ -209,20 +188,24 @@ def main():
                     status,url = checkLink(link)
                     if status != 200:
                         errorLinks.append((status,url))
-                    checkedList.append(link)
+                    checkedList.append(link[0])
                 del checkList[:]
             if len(checkNext) > 0:
                 checkNextN = []
                 for link in checkNext:
-                    status,urlList = getURL(link,session)
+                    status,urlList = getURL(link[0],session)
                     if status == 200:
                         checkList,checkedList,checkNextN = classifyLinks(urlList,baseURL,checkList,checkedList,checkNextN)
                 checkNext = checkNextN
             else:
                 logging.info('链接检查完毕，共检查 ' + str(len(checkedList)) + ' 个链接，其中有 ' + str(len(errorLinks)) + ' 个异常链接')
                 break
-        for link in errorLinks:
-            print(link)
+        if len(errorLinks) > 0:
+            text = '<html><body><p>共检查 ' + str(len(checkedList)) + ' 个链接，其中有 ' + str(len(errorLinks)) + ' 个异常链接，列表如下：' + '</p><table><tr><th>Http Code</th><th>Url</th><th>Referer Url</th></tr>'
+            for link in errorLinks:
+                text = text + '<tr><td>' + str(link[0]) + '</td><td>' + link[1][0] + '</td><td>' + link[1][1] + '</td></tr>'
+            text = text + '</table></body></html>'
+            sendMail(text)
     else:
         logging.error('[ ' + str(status) + ' ] ' + urlList)
     
