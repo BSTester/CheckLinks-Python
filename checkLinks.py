@@ -48,7 +48,11 @@ def getURL(url,session=None):
                    'Cookie':'session=' + session,
                    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http()
-    response, content = http.request(url, 'GET', headers=headers)
+    try:
+        response, content = http.request(url, 'GET', headers=headers)
+    except EOFError as e:
+        logging.error(str(e) + ', ' + url)
+        return 500,url
     if response.status == 200:
         soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
         #获取所有页面链接
@@ -56,7 +60,7 @@ def getURL(url,session=None):
             for links in soup.find_all(linkType):
                 if links is not None:
                     link = links.get(linkTypes[linkType])
-                    if link is not None and link != '' and link != '/' and not link.find('?t_=') > 0:
+                    if link is not None and link != '' and link != '/' and not link.find('t_=') > 0:
                         if re.search(r'^(\\\'|\\")',link):
                             link = link[2:-2]
                         if re.search(r'/$',link):
@@ -84,7 +88,7 @@ def getURL(url,session=None):
                                 urlLinks.append((link,url))
                             else:
                                 resLinks.append((link,url))
-                        elif re.search(r'^[^(javascript|mailto|#)]',link):
+                        elif not re.search(r'(:|#)',link):
                             link = url + '/' + link
                             if linkType in ['a','iframe']:
                                 urlLinks.append((link,url))
@@ -95,12 +99,22 @@ def getURL(url,session=None):
     return response.status,url
 
 #检查链接
-def checkLink(url):
-    headers = {'contentType':'text/html;charset=UTF-8',
-               'Cache-Control':'no-cache',
-               'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
+def checkLink(url,session=None):
+    if session is None:
+        headers = {'contentType':'text/html;charset=UTF-8',
+                   'Cache-Control':'no-cache',
+                   'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
+    else:
+        headers = {'contentType':'text/html;charset=UTF-8',
+                   'Cache-Control':'no-cache',
+                   'Cookie':'session=' + session,
+                   'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.4 Safari/537.36'}
     http = httplib2.Http()
-    response, content = http.request(url[0], 'GET', headers=headers)
+    try:
+        response, content = http.request(url[0], 'GET', headers=headers)
+    except EOFError as e:
+        logging.error(str(e) + ', ' + url[0] + ', ' + url[1])
+        return 500,url
     if response.status == 200:
         logging.info(str(response.status) + ', ' + url[0] + ', ' + url[1])
     else:
@@ -167,16 +181,14 @@ def main():
     ifLogin = 1 #是否登录开关
     session = None
     if ifLogin:
-        url = homePage + '/admin/user/login'
+        loginUrl = homePage + '/admin/user/login'
         postData = {'username':'username@example.com',
                     'password':'password',
                     'remeber':'0'}
-        status,session = getSession(url,postData)
+        status,session = getSession(loginUrl,postData)
         if status != 200:
             logging.error(session)
             session = None
-        else:
-            session = session
     status,urlList = getURL(homePage,session)
     if status == 200:
         checkList,checkedList,checkNext = classifyLinks(urlList,baseURL,checkList,checkedList,checkNext)
@@ -185,13 +197,18 @@ def main():
                 pageNum += 1
                 logging.info('开始检查第 ' + str(pageNum) + ' 层链接')
                 for link in checkList:
-                    status,url = checkLink(link)
+                    status,url = checkLink(link,session)
                     if status != 200:
                         errorLinks.append((status,url))
                     checkedList.append(link[0])
                 del checkList[:]
             if len(checkNext) > 0:
                 checkNextN = []
+                if ifLogin:
+                    status,session = getSession(loginUrl,postData)
+                    if status != 200:
+                        logging.error(session)
+                        session = None
                 for link in checkNext:
                     status,urlList = getURL(link[0],session)
                     if status == 200:
