@@ -50,52 +50,66 @@ def getURL(url,session=None):
     http = httplib2.Http()
     try:
         response, content = http.request(url, 'GET', headers=headers)
-    except EOFError as e:
+    except Exception as e:
         logging.error(str(e) + ', ' + url)
-        return 500,url
+        return 5001,url       
     if response.status == 200:
-        soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
-        #获取所有页面链接
-        for linkType in linkTypes:
-            for links in soup.find_all(linkType):
-                if links is not None:
-                    link = links.get(linkTypes[linkType])
-                    if link is not None and link != '' and link != '/' and not link.find('t_=') > 0:
-                        if re.search(r'^(\\\'|\\")',link):
-                            link = link[2:-2]
-                        if re.search(r'/$',link):
-                            link = link[:-1]
-                        if re.search(r'^(http|https)',link):
-                            if linkType in ['a','iframe']:
-                                urlLinks.append((link,url))
-                            else:
-                                resLinks.append((link,url))
-                        elif re.search(r'^(//)',link):
-                            link = urlParse[0] + link
-                            if linkType in ['a','iframe']:
-                                urlLinks.append((link,url))
-                            else:
-                                resLinks.append((link,url))
-                        elif re.search(r'^/',link):
-                            link = rootURL + link
-                            if linkType in ['a','iframe']:
-                                urlLinks.append((link,url))
-                            else:
-                                resLinks.append((link,url))
-                        elif re.search(r'^(../)',link):
-                            link = rootURL  + '/' + link
-                            if linkType in ['a','iframe']:
-                                urlLinks.append((link,url))
-                            else:
-                                resLinks.append((link,url))
-                        elif not re.search(r'(:|#)',link):
-                            link = url + '/' + link
-                            if linkType in ['a','iframe']:
-                                urlLinks.append((link,url))
-                            else:
-                                resLinks.append((link,url))
-                        print(link)
-        return response.status,{'urlLinks':urlLinks,'resLinks':resLinks}
+        try:
+            soup = BeautifulSoup(str(content),'html.parser',from_encoding='utf-8')
+            #获取所有页面链接
+            for linkType in linkTypes:
+                for links in soup.find_all(linkType):
+                    if links is not None:
+                        link = links.get(linkTypes[linkType])
+                        if link is not None and link != '' and link != '/' and not link.find('t_=') > 0:
+                            if re.search(r'^(\\\'|\\")',link):
+                                link = link[2:-2]
+                            if re.search(r'/$',link):
+                                link = link[:-1]
+                            if re.search(r'^(http|https)',link):
+                                if linkType in ['a','iframe']:
+                                    urlLinks.append((link,url))
+                                else:
+                                    resLinks.append((link,url))
+                            elif re.search(r'^(//)',link):
+                                link = urlParse[0] + link
+                                if linkType in ['a','iframe']:
+                                    urlLinks.append((link,url))
+                                else:
+                                    resLinks.append((link,url))
+                            elif re.search(r'^/',link):
+                                link = rootURL + link
+                                if linkType in ['a','iframe']:
+                                    urlLinks.append((link,url))
+                                else:
+                                    resLinks.append((link,url))
+                            elif re.search(r'^(../)',link):
+                                step = link.count('../')
+                                link = link.replace('../','')
+                                upStep = step - (len(urlParse)-4)
+                                if upStep >= 0:
+                                    link = rootURL  + '/' + link
+                                else:
+                                    upStep = (len(urlParse)-4) - step
+                                    linkTemp = ''
+                                    for linkTmp in urlParse[3:-(upStep+1)]:
+                                        linkTemp = linkTemp + '/' + linkTmp
+                                    link = rootURL + linkTemp + '/' + link
+                                if linkType in ['a','iframe']:
+                                    urlLinks.append((link,url))
+                                else:
+                                    resLinks.append((link,url))
+                            elif not re.search(r'(:|#)',link):
+                                link = url + '/' + link
+                                if linkType in ['a','iframe']:
+                                    urlLinks.append((link,url))
+                                else:
+                                    resLinks.append((link,url))
+                            print(link)
+            return response.status,{'urlLinks':urlLinks,'resLinks':resLinks}
+        except Exception as e:
+            logging.error(str(e) + ', ' + url)
+            return 5001,url 
     return response.status,url
 
 #检查链接
@@ -112,9 +126,9 @@ def checkLink(url,session=None):
     http = httplib2.Http()
     try:
         response, content = http.request(url[0], 'GET', headers=headers)
-    except EOFError as e:
+    except Exception as e:
         logging.error(str(e) + ', ' + url[0] + ', ' + url[1])
-        return 500,url
+        return 5001,url
     if response.status == 200:
         logging.info(str(response.status) + ', ' + url[0] + ', ' + url[1])
     else:
@@ -130,7 +144,7 @@ def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
                     checkList.append(link)
                     if linkType == 'urlLinks':
                         checkNext.append(link)
-    return checkList,checkedList,checkNext
+    return checkList,checkNext
 
 #获取登录Session
 def getSession(url, postData):
@@ -154,6 +168,7 @@ def getSession(url, postData):
 def sendMail(text):
     sender = 'no-reply@example.com'  
     receiver = ['penn@example.com']
+    mailToCc = ['penn@example.cn']
     subject = '[AutomantionTest]站点链接有效性扫描结果通知'  
     smtpserver = 'smtp.exmail.qq.com'  
     username = 'no-reply@example.com'  
@@ -163,10 +178,11 @@ def sendMail(text):
     msg['Subject'] = subject  
     msg['From'] = sender
     msg['To'] = ';'.join(receiver)
+    msg['Cc'] = ';'.join(mailToCc)
     smtp = smtplib.SMTP()  
     smtp.connect(smtpserver)  
     smtp.login(username, password)  
-    smtp.sendmail(sender, receiver, msg.as_string())  
+    smtp.sendmail(sender, receiver + mailToCc, msg.as_string())  
     smtp.quit()  
 
 def main():
@@ -191,11 +207,16 @@ def main():
             session = None
     status,urlList = getURL(homePage,session)
     if status == 200:
-        checkList,checkedList,checkNext = classifyLinks(urlList,baseURL,checkList,checkedList,checkNext)
+        checkList,checkNext = classifyLinks(urlList,baseURL,checkList,checkedList,checkNext)
         while True:
             if len(checkList) > 0:
                 pageNum += 1
                 logging.info('开始检查第 ' + str(pageNum) + ' 层链接')
+                if ifLogin:
+                    status,session = getSession(loginUrl,postData)
+                    if status != 200:
+                        logging.error(session)
+                        session = None
                 for link in checkList:
                     status,url = checkLink(link,session)
                     if status != 200:
@@ -212,7 +233,9 @@ def main():
                 for link in checkNext:
                     status,urlList = getURL(link[0],session)
                     if status == 200:
-                        checkList,checkedList,checkNextN = classifyLinks(urlList,baseURL,checkList,checkedList,checkNextN)
+                        checkList,checkNextN = classifyLinks(urlList,baseURL,checkList,checkedList,checkNextN)
+                    else:
+                        logging.error('[ ' + str(status) + ' ] ' + urlList)
                 checkNext = checkNextN
             else:
                 logging.info('链接检查完毕，共检查 ' + str(len(checkedList)) + ' 个链接，其中有 ' + str(len(errorLinks)) + ' 个异常链接')
