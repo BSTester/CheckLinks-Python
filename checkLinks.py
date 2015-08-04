@@ -66,7 +66,7 @@ def getURL(url,session=None):
                                 link = link[2:-2]
                             if re.search(r'/$',link):
                                 link = link[:-1]
-                            if re.search(r'^(http|https)',link):
+                            if re.search(r'^(http://.|https://.)',link):
                                 if linkType in ['a','iframe']:
                                     urlLinks.append((link,url))
                                 else:
