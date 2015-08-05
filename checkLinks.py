@@ -132,7 +132,7 @@ def checkLink(url,session=None):
     if response.status == 200:
         logging.info(str(response.status) + ', ' + url[0] + ', ' + url[1])
     else:
-        logging.error(str(response.status) + ', ' + url[0] + ', ' + url[1])
+        logging.error('[ ' + str(response.status) + ' ], ' + url[0] + ', ' + url[1])
     return response.status,url
 
 #链接分类 过滤掉站外链接
@@ -140,7 +140,12 @@ def classifyLinks(urlList,baseURL,checkList,checkedList,checkNext):
     for linkType in urlList:
         if len(urlList[linkType]) > 0:
             for link in urlList[linkType]:
-                if link[0].split('/')[2].find(baseURL) > 0 and link not in checkList and link[0] not in checkedList:
+                inCheck = False
+                for i in range(len(checkList)):
+                    if link[0] in checkList[i]:
+                        inCheck = True
+                        break
+                if link[0].split('/')[2].find(baseURL) > 0 and not inCheck and link[0] not in checkedList:
                     checkList.append(link)
                     if linkType == 'urlLinks':
                         checkNext.append(link)
